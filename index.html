@@ -360,7 +360,7 @@
                     throw new Error(`Server error: ${response.status}`);
                 }
 
-                const data = await response.json();
+                const data = await response.text();
                 displayResults(data);
 
             } catch (err) {
