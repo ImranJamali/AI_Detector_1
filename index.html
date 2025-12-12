@@ -360,7 +360,7 @@
                     throw new Error(`Server error: ${response.status}`);
                 }
 
-                const data = await response.text();
+                const data = await response.json();
                 displayResults(data);
 
             } catch (err) {
@@ -373,21 +373,21 @@
         }
 
         function displayResults(data) {
-            // Extract percentages from response
+            // Extract percentage from response
             let aiPercent = 0;
             let humanPercent = 0;
 
             // Handle different response formats
-            if (data.ai !== undefined && data.human !== undefined) {
-                aiPercent = parseFloat(data.ai);
-                humanPercent = parseFloat(data.human);
-            } else if (data.aiPercentage !== undefined && data.humanPercentage !== undefined) {
+            if (data.aiPercentage !== undefined) {
                 aiPercent = parseFloat(data.aiPercentage);
-                humanPercent = parseFloat(data.humanPercentage);
+                humanPercent = 100 - aiPercent;
+            } else if (data.ai !== undefined) {
+                aiPercent = parseFloat(data.ai);
+                humanPercent = parseFloat(data.human || (100 - aiPercent));
             } else if (data.result) {
                 // Handle nested result object
-                aiPercent = parseFloat(data.result.ai || 0);
-                humanPercent = parseFloat(data.result.human || 0);
+                aiPercent = parseFloat(data.result.aiPercentage || data.result.ai || 0);
+                humanPercent = 100 - aiPercent;
             }
 
             // Update UI
