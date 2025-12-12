@@ -301,117 +301,169 @@
     </div>
 
 <script>
-    const inputText = document.getElementById('inputText');
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const loading = document.getElementById('loading');
-    const result = document.getElementById('result');
-    const error = document.getElementById('error');
-    const aiPercentage = document.getElementById('aiPercentage');
-    const humanPercentage = document.getElementById('humanPercentage');
-    const aiProgress = document.getElementById('aiProgress');
-    const humanProgress = document.getElementById('humanProgress');
+const inputText = document.getElementById('inputText');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const clearBtn = document.getElementById('clearBtn');
+const loading = document.getElementById('loading');
+const result = document.getElementById('result');
+const error = document.getElementById('error');
+const aiPercentage = document.getElementById('aiPercentage');
+const humanPercentage = document.getElementById('humanPercentage');
+const aiProgress = document.getElementById('aiProgress');
+const humanProgress = document.getElementById('humanProgress');
 
-    const WEBHOOK_URL = 'https://n8n-kdwmdyqv.us-east-1.clawcloudrun.com/webhook-test/AiDetectorModel';
+const WEBHOOK_URL = 'https://n8n-kdwmdyqv.us-east-1.clawcloudrun.com/webhook-test/AiDetectorModel'; // verify this
 
-    // Generate or retrieve session ID
-    let sessionId = sessionStorage.getItem('sessionId');
-    if (!sessionId) {
-        sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        sessionStorage.setItem('sessionId', sessionId);
+// Generate or retrieve session ID
+let sessionId = sessionStorage.getItem('sessionId');
+if (!sessionId) {
+    sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    sessionStorage.setItem('sessionId', sessionId);
+}
+
+analyzeBtn.addEventListener('click', analyzeText);
+clearBtn.addEventListener('click', clearAll);
+
+inputText.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) analyzeText();
+});
+
+async function analyzeText() {
+    const text = inputText.value.trim();
+    if (!text) {
+        showError('Please enter some text to analyze');
+        return;
     }
 
-    analyzeBtn.addEventListener('click', analyzeText);
-    clearBtn.addEventListener('click', clearAll);
+    // UI preps
+    result.style.display = 'none';
+    error.classList.remove('show');
+    loading.classList.add('show');
+    analyzeBtn.disabled = true;
 
-    inputText.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && e.ctrlKey) {
-            analyzeText();
-        }
-    });
+    try {
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text, sessionId: sessionId })
+        });
 
-    async function analyzeText() {
-        const text = inputText.value.trim();
+        // Log status for debugging
+        console.log('Fetch response status:', response.status, response.statusText);
 
-        if (!text) {
-            showError('Please enter some text to analyze');
+        // Read raw body (always)
+        const raw = await response.text();
+        console.log('Raw response body:', raw);
+
+        if (!response.ok) {
+            // Show server status and body to help debug
+            const msg = `Server returned ${response.status} ${response.statusText}`;
+            showError(`${msg} — see console for body.`);
+            console.error('Server body:', raw);
             return;
         }
 
-        // Hide previous results and show loading
-        result.style.display = 'none';
-        error.classList.remove('show');
-        loading.classList.add('show');
-        analyzeBtn.disabled = true;
-
+        // Try to parse JSON — if parsing fails, treat as plain text
+        let data;
         try {
-            const response = await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    text: text,
-                    sessionId: sessionId 
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
+            data = JSON.parse(raw);
+        } catch (parseErr) {
+            console.warn('Response is not valid JSON, using raw text instead.', parseErr);
+            // If raw is like {"aiPercentage":72} as a string it will parse above.
+            // If it really is plain text (e.g., "AI: 72%"), we'll display it plainly.
+            // We'll try to extract a number by regex as last resort.
+            const numMatch = raw.match(/(\d{1,3}(\.\d+)?)/);
+            if (numMatch) {
+                const aiPercent = parseFloat(numMatch[1]);
+                data = { aiPercentage: aiPercent };
+            } else {
+                // Let user see raw server text
+                showError('Server returned non-JSON response. See console for raw output.');
+                // Optionally display raw text in the UI:
+                displayRawText(raw);
+                return;
             }
-
-            // ✅ FIXED LINE (replaces response.json())
-            const data = JSON.parse(await response.text());
-
-            displayResults(data);
-
-        } catch (err) {
-            showError('Failed to analyze text. Please check your connection and try again.');
-            console.error('Error:', err);
-        } finally {
-            loading.classList.remove('show');
-            analyzeBtn.disabled = false;
         }
+
+        // If we have an object, send to displayResults
+        displayResults(data);
+
+    } catch (err) {
+        // Network/CORS or other fetch-level error
+        console.error('Fetch error:', err);
+        // Provide more concrete hint
+        showError('Network or CORS error. Check console. If using n8n, ensure webhook URL is correct and CORS is allowed.');
+    } finally {
+        loading.classList.remove('show');
+        analyzeBtn.disabled = false;
     }
+}
 
-    function displayResults(data) {
-        let aiPercent = 0;
-        let humanPercent = 0;
+function displayResults(data) {
+    let aiPercent = 0;
+    let humanPercent = 0;
 
+    if (data && typeof data === 'object') {
         if (data.aiPercentage !== undefined) {
-            aiPercent = parseFloat(data.aiPercentage);
+            aiPercent = parseFloat(data.aiPercentage) || 0;
             humanPercent = 100 - aiPercent;
         } else if (data.ai !== undefined) {
-            aiPercent = parseFloat(data.ai);
-            humanPercent = parseFloat(data.human || (100 - aiPercent));
-        } else if (data.result) {
-            aiPercent = parseFloat(data.result.aiPercentage || data.result.ai || 0);
+            aiPercent = parseFloat(data.ai) || 0;
+            humanPercent = parseFloat(data.human || (100 - aiPercent)) || (100 - aiPercent);
+        } else if (data.result && typeof data.result === 'object') {
+            aiPercent = parseFloat(data.result.aiPercentage || data.result.ai || 0) || 0;
             humanPercent = 100 - aiPercent;
+        } else {
+            // fallback: try to find a number anywhere
+            const jsonStr = JSON.stringify(data);
+            const m = jsonStr.match(/(\d{1,3}(\.\d+)?)/);
+            if (m) {
+                aiPercent = parseFloat(m[1]);
+                humanPercent = 100 - aiPercent;
+            } else {
+                showError('Unexpected response structure. See console for details.');
+                console.warn('Unexpected response object:', data);
+                return;
+            }
         }
-
-        aiPercentage.textContent = `${aiPercent.toFixed(1)}%`;
-        humanPercentage.textContent = `${humanPercent.toFixed(1)}%`;
-        aiProgress.style.width = `${aiPercent}%`;
-        humanProgress.style.width = `${humanPercent}%`;
-
-        result.style.display = 'block';
+    } else {
+        showError('Empty or invalid response from server.');
+        console.warn('Invalid data:', data);
+        return;
     }
 
-    function showError(message) {
-        error.textContent = message;
-        error.classList.add('show');
-    }
+    aiPercentage.textContent = `${aiPercent.toFixed(1)}%`;
+    humanPercentage.textContent = `${humanPercent.toFixed(1)}%`;
+    aiProgress.style.width = `${aiPercent}%`;
+    humanProgress.style.width = `${humanPercent}%`;
+    result.style.display = 'block';
+}
 
-    function clearAll() {
-        inputText.value = '';
-        result.style.display = 'block';
-        error.classList.remove('show');
-        loading.classList.remove('show');
-        aiPercentage.textContent = '0%';
-        humanPercentage.textContent = '0%';
-        aiProgress.style.width = '0%';
-        humanProgress.style.width = '0%';
-    }
+function displayRawText(text) {
+    // show raw text in the AI percentage box so user sees server output
+    aiPercentage.textContent = text;
+    humanPercentage.textContent = '';
+    aiProgress.style.width = '0%';
+    humanProgress.style.width = '0%';
+    result.style.display = 'block';
+}
+
+function showError(message) {
+    error.textContent = message;
+    error.classList.add('show');
+}
+
+function clearAll() {
+    inputText.value = '';
+    result.style.display = 'block';
+    error.classList.remove('show');
+    loading.classList.remove('show');
+    aiPercentage.textContent = '0%';
+    humanPercentage.textContent = '0%';
+    aiProgress.style.width = '0%';
+    humanProgress.style.width = '0%';
+}
 </script>
+
 </body>
 </html>
