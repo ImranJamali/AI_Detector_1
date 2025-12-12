@@ -300,120 +300,118 @@
         </div>
     </div>
 
-    <script>
-        const inputText = document.getElementById('inputText');
-        const analyzeBtn = document.getElementById('analyzeBtn');
-        const clearBtn = document.getElementById('clearBtn');
-        const loading = document.getElementById('loading');
-        const result = document.getElementById('result');
-        const error = document.getElementById('error');
-        const aiPercentage = document.getElementById('aiPercentage');
-        const humanPercentage = document.getElementById('humanPercentage');
-        const aiProgress = document.getElementById('aiProgress');
-        const humanProgress = document.getElementById('humanProgress');
+<script>
+    const inputText = document.getElementById('inputText');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const loading = document.getElementById('loading');
+    const result = document.getElementById('result');
+    const error = document.getElementById('error');
+    const aiPercentage = document.getElementById('aiPercentage');
+    const humanPercentage = document.getElementById('humanPercentage');
+    const aiProgress = document.getElementById('aiProgress');
+    const humanProgress = document.getElementById('humanProgress');
 
-        const WEBHOOK_URL = 'https://n8n-kdwmdyqv.us-east-1.clawcloudrun.com/webhook-test/AiDetectorModel';
+    const WEBHOOK_URL = 'https://n8n-kdwmdyqv.us-east-1.clawcloudrun.com/webhook-test/AiDetectorModel';
 
-        // Generate or retrieve session ID
-        let sessionId = sessionStorage.getItem('sessionId');
-        if (!sessionId) {
-            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            sessionStorage.setItem('sessionId', sessionId);
+    // Generate or retrieve session ID
+    let sessionId = sessionStorage.getItem('sessionId');
+    if (!sessionId) {
+        sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem('sessionId', sessionId);
+    }
+
+    analyzeBtn.addEventListener('click', analyzeText);
+    clearBtn.addEventListener('click', clearAll);
+
+    inputText.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+            analyzeText();
+        }
+    });
+
+    async function analyzeText() {
+        const text = inputText.value.trim();
+
+        if (!text) {
+            showError('Please enter some text to analyze');
+            return;
         }
 
-        analyzeBtn.addEventListener('click', analyzeText);
-        clearBtn.addEventListener('click', clearAll);
+        // Hide previous results and show loading
+        result.style.display = 'none';
+        error.classList.remove('show');
+        loading.classList.add('show');
+        analyzeBtn.disabled = true;
 
-        inputText.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && e.ctrlKey) {
-                analyzeText();
-            }
-        });
+        try {
+            const response = await fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    text: text,
+                    sessionId: sessionId 
+                })
+            });
 
-        async function analyzeText() {
-            const text = inputText.value.trim();
-
-            if (!text) {
-                showError('Please enter some text to analyze');
-                return;
-            }
-
-            // Hide previous results and show loading
-            result.style.display = 'none';
-            error.classList.remove('show');
-            loading.classList.add('show');
-            analyzeBtn.disabled = true;
-
-            try {
-                const response = await fetch(WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        text: text,
-                        sessionId: sessionId 
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Server error: ${response.status}`);
-                }
-
-                const data = await response.json();
-                displayResults(data);
-
-            } catch (err) {
-                showError('Failed to analyze text. Please check your connection and try again.');
-                console.error('Error:', err);
-            } finally {
-                loading.classList.remove('show');
-                analyzeBtn.disabled = false;
-            }
-        }
-
-        function displayResults(data) {
-            // Extract percentage from response
-            let aiPercent = 0;
-            let humanPercent = 0;
-
-            // Handle different response formats
-            if (data.aiPercentage !== undefined) {
-                aiPercent = parseFloat(data.aiPercentage);
-                humanPercent = 100 - aiPercent;
-            } else if (data.ai !== undefined) {
-                aiPercent = parseFloat(data.ai);
-                humanPercent = parseFloat(data.human || (100 - aiPercent));
-            } else if (data.result) {
-                // Handle nested result object
-                aiPercent = parseFloat(data.result.aiPercentage || data.result.ai || 0);
-                humanPercent = 100 - aiPercent;
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
             }
 
-            // Update UI
-            aiPercentage.textContent = `${aiPercent.toFixed(1)}%`;
-            humanPercentage.textContent = `${humanPercent.toFixed(1)}%`;
-            aiProgress.style.width = `${aiPercent}%`;
-            humanProgress.style.width = `${humanPercent}%`;
+            // ✅ FIXED LINE (replaces response.json())
+            const data = JSON.parse(await response.text());
 
-            result.style.display = 'block';
-        }
+            displayResults(data);
 
-        function showError(message) {
-            error.textContent = message;
-            error.classList.add('show');
-        }
-
-        function clearAll() {
-            inputText.value = '';
-            result.style.display = 'block';
-            error.classList.remove('show');
+        } catch (err) {
+            showError('Failed to analyze text. Please check your connection and try again.');
+            console.error('Error:', err);
+        } finally {
             loading.classList.remove('show');
-            aiPercentage.textContent = '0%';
-            humanPercentage.textContent = '0%';
-            aiProgress.style.width = '0%';
-            humanProgress.style.width = '0%';
+            analyzeBtn.disabled = false;
         }
-    </script>
+    }
+
+    function displayResults(data) {
+        let aiPercent = 0;
+        let humanPercent = 0;
+
+        if (data.aiPercentage !== undefined) {
+            aiPercent = parseFloat(data.aiPercentage);
+            humanPercent = 100 - aiPercent;
+        } else if (data.ai !== undefined) {
+            aiPercent = parseFloat(data.ai);
+            humanPercent = parseFloat(data.human || (100 - aiPercent));
+        } else if (data.result) {
+            aiPercent = parseFloat(data.result.aiPercentage || data.result.ai || 0);
+            humanPercent = 100 - aiPercent;
+        }
+
+        aiPercentage.textContent = `${aiPercent.toFixed(1)}%`;
+        humanPercentage.textContent = `${humanPercent.toFixed(1)}%`;
+        aiProgress.style.width = `${aiPercent}%`;
+        humanProgress.style.width = `${humanPercent}%`;
+
+        result.style.display = 'block';
+    }
+
+    function showError(message) {
+        error.textContent = message;
+        error.classList.add('show');
+    }
+
+    function clearAll() {
+        inputText.value = '';
+        result.style.display = 'block';
+        error.classList.remove('show');
+        loading.classList.remove('show');
+        aiPercentage.textContent = '0%';
+        humanPercentage.textContent = '0%';
+        aiProgress.style.width = '0%';
+        humanProgress.style.width = '0%';
+    }
+</script>
 </body>
 </html>
