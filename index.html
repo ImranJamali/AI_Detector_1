@@ -376,13 +376,16 @@
                 }
 
                 const data = await response.text();
-
-                let result = data;
-                // Extract AI percentage from response
-                // Adjust this based on your actual API response structure
-                const aiPercentage = data.aiPercentage || data.ai_percentage || data.score || 0;
                 
-                updateWheel(Math.round(aiPercentage));
+                // Parse the plain text number response
+                const aiPercentage = parseInt(data.trim(), 10);
+                
+                // Validate the percentage
+                if (isNaN(aiPercentage) || aiPercentage < 0 || aiPercentage > 100) {
+                    throw new Error('Invalid percentage received from server');
+                }
+                
+                updateWheel(aiPercentage);
                 showStatus('Analysis complete!', 'success');
 
             } catch (error) {
